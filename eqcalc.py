@@ -8,254 +8,219 @@
 from __future__ import division
 import scipy.optimize
 import scipy.linalg
+import scipy.integrate
 import math
 import numpy
 import atomparser
-import sys
-import matplotlib.pyplot as pl
 from mpl_toolkits.mplot3d import axes3d
 from matplotlib import cm
+from matplotlib import pyplot as pl
 
 smallvalue = 1e-10
 
 nspecies = 9                    # number of species precent
-T = 298
+Tstart = 298
 Tfinal = 473
 R = 8.314
-Steps = Tfinal - T
+Steps = Tfinal - Tstart
 
-Temprange = numpy.linspace(T, Tfinal, Steps)
+Temprange = numpy.linspace(Tstart, Tfinal, Steps)
 dT = Temprange[1] - Temprange[0]
 length = numpy.size(Temprange)
 
 Cpv = numpy.zeros([length,nspecies])
-Cpvalue = numpy.zeros([length,nspecies])
-Cpintvalue = numpy.zeros([length,nspecies])
-CpintTvalue = numpy.zeros([length,nspecies])
-Hvalue = numpy.zeros([length,nspecies])
-Svalue = numpy.zeros([length,nspecies])
-Gvalue = numpy.zeros([length,nspecies])
+Cpvalue = Cpv.copy()
+Cpintvalue = Cpv.copy()
+CpintTvalue = Cpv.copy()
+Hvalue = Cpv.copy()
+Svalue = Cpv.copy()
+Gvalue = Cpv.copy()
+DHvalue = Cpv.copy()
+DSvalue = Cpv.copy()
 
 position = 0
-mustplot = 0    # 1 for Plotting, 0 for not plotting
+mustplot = True    # 1 for Plotting, 0 for not plotting
 Minvalue = 0    # Used to calculate Minimum function value
 
-for i in Temprange:
-    T = i
-    RT = R*T
-    class compound:            
-        """ Basic container for compound properties """
-        def __init__(self, name, DGf):
-            self.name = name
-            self.DGf = DGf
-            self.parsed = atomparser.parseformula(name)
-        
-    class mixture:
-        """ Container for mixture properties """
-        def __init__(self, charge):
-            """ Initialise mixture - charge contains tuples of (initialcharge, compound) """
-            self.N, self.compounds = zip(*charge)
-            self.N = numpy.array(self.N)
-            self.compoundnames = [c.name for c in self.compounds]
-            self.DGf = numpy.array([c.DGf for c in self.compounds])
-            self.elements = reduce(set.union, (c.parsed.distinctelements() 
-                                                for c in self.compounds))
-            self.S = numpy.array([c.parsed.counts(self.elements) 
-                                    for c in self.compounds]).T
-            Srank = numpy.count_nonzero(numpy.linalg.svd(self.S, compute_uv=False) > smallvalue)
-                
-            # Calculating the Degrees of freedom
-            self.DOF = self.S.shape[1] - Srank                      
-                
-            # Coefficients of the Gibbs function
-            Ncomps = len(self.compounds)
-            # self.A = numpy.tile(numpy.repeat([-1, 1], [1, Ncomps-1]), [Ncomps, 1])
-            # number of atoms of each element
-            self.atoms = numpy.dot(self.S, self.N)
-        
-        
-        def gibbs(self, N=None):
-            """ Gibbs energy of mixture with N of each compound """
-            if N is None: N = self.N
-            # TODO: There is every chance that this function is not correct. It needs to be checked.
-            #return sum(N*(self.DGf/(R*T) + numpy.log(numpy.dot(self.A, N))))
-            logs = numpy.log(sum(N)) 
-            RT = R*T      
-            return sum(N*(self.DGf/RT + numpy.log(N) - logs))
-        
-        def atombalance(self, N):
-        
-            """ Atom balance with N of each compound """
-            #if N is None: N = self.N
-            return numpy.dot(self.S, N) - self.atoms
-        
-            
-        def conversion(self, conversionspec):
-            """ Calculate the composition given a certain conversion.
-            conversionspec is a list of 2-tuples containing a component index or name and a conversion """
-            #TODO: A and B should only be calculated once
-            #TODO: This does not take into account any existing products in the mixture
-            #TODO: This works only for conversion specified in terms of reagents
-            if len(conversionspec) < self.DOF:
-                raise Exception("Not enough conversions specified.")
-            C = numpy.zeros([len(conversionspec), self.S.shape[1]])
-            Ic = C.copy()
-            for i, (j, c) in enumerate(conversionspec):
-                if type(j) is str:
-                    j = self.compoundnames.index(j)
-                C[i, j] = 1-c
-                Ic[i, j] = 1
-            A = numpy.vstack([self.S, C])
-            B = numpy.vstack([self.S, Ic])
-            # A ni = B nf
-            nf, _, _, _ = scipy.linalg.lstsq(B, numpy.dot(A, self.N))
-            # assert residuals are neglegable
-            nf[nf<0] = 0
-            return nf
-            
-        def equilibrium(self, initialconversion):
-            """ Return equilibrium composition as minimum of Gibbs Energy """
-            # guess initial conditions
-            N0 = self.conversion(initialconversion)
-            logN0 = numpy.log(N0)
-                
-            # This decorator modifies a function to be defined in terms of new variables
-            def changevars(f):
-                def newf(newX):
-        #         print 'newX', newX
-        #         print 'X', numpy.exp(newX)
-                    r = f(numpy.exp(newX))
-        #          print 'f(X)', r
-                    return r
-                return newf
-        
-            # Find optimal point in terms of a change of variables
-            logN = scipy.optimize.fmin_slsqp(changevars(self.gibbs), 
-                                            logN0, 
-                                            f_eqcons=changevars(self.atombalance),
-                                            acc = 1.0E-12)
+class compound:            
+    """ Basic container for compound properties """
+    def __init__(self, name, DGf, A, B, C, D, Ho, So):
+        self.name = name
+        self.DGf = DGf
+        self.A = A
+        self.B = B
+        self.C = C
+        self.D = D
+        self.Ho = Ho
+        self.So = So
+        self.parsed = atomparser.parseformula(name)
     
-            N = numpy.exp(logN)
-            print ''
-            print 'Calculated Optimmum Values'
-            print N
-            print ''
-            print 'Calculated Optimum Function value'
-            print m.gibbs(N)
-                
-            return N
-       
-       # Function for Cp integration as function of temperature
-        def Cpint(T, C): 
-           return CpConstants[0,C] + CpConstants[1,C]*(math.pow(10, -3))*T + CpConstants[2,C]*(math.pow(10, 5))*(math.pow(T, -2)) + CpConstants[3,C]*(math.pow(10, -6))*(math.pow(T, 2)) 
-       
-       
-    # Here for a particular mixture:            
-        # Initial values manually entered by users for each component
-        # calculating Compound property as a function of Temperature
-            # Constants for calculating Heat Capacity
-                            # MgO(0)      H2O(1)      Mg(OH)2(2)    Al(OH)3(3)     Al2O3(4)      Mg(5)        O2(6)     Al(7)      H2(8)
-    Aconstant = numpy.array([47.485,    186.884,     100.055,       30.602,        115.977,     -7.493,      29.790,    32.974,   22.496])
-    Bconstant = numpy.array([4.648,     -464.247,    18.337,        209.786,       15.654,      256.809,    -6.177,     -20.677,  17.044])
-    Cconstant = numpy.array([-10.340,   -19.565,     -25.255,       0,            -44.290,      0.011,      -0.021,     -4.138,   0.365])
-    Dconstant = numpy.array([-0.268,    548.631,     -0.017,        0,            -2.358,       -35.618,    15.997,     23.753,   11.122])
-    
-    CpConstants = numpy.array([Aconstant, Bconstant, Cconstant, Dconstant]) 
-    for C in range(0, nspecies):
-        Cpv[position,C] = mixture.Cpint(T, C)
-    
-            # Enthalpy values at ambient conditions for each compound
-                      # MgO(0)      H2O(1)      Mg(OH)2(2)    Al(OH)3(3)     Al2O3(4)      Mg(5)          O2(6)     Al(7)    H2(8)
-    Ho = numpy.array([-601996,     -285970,      -924991,     -1295164,     -1676429,        0,             0,       0,       0])
-    
-    DHofMgO   = Ho[0] - Ho[5] - 0.5*Ho[6]
-    DHofH2O   = Ho[1] - Ho[8] - 0.5*Ho[6]
-    DHofAl2O3 = Ho[4] - 2*Ho[7] - (3/2)*Ho[6]
-    DHofMgOH2 = Ho[2] - Ho[5] - Ho[6] - Ho[8]
-    DHofAlOH3 = Ho[3] - Ho[7] - (3/2)*Ho[6] - (3/2)*Ho[8]
+    # Function for Cp as function of temperature
+    def Cp(self, T): 
+        return self.A + self.B*1e-3*T + self.C*1e5*T**-2 + self.D*1e-6*T**2
 
-            # Entropy values at ambient conditions for each compound
-                      # MgO(0)   H2O(1)    Mg(OH)2(2)    Al(OH)3(3)  Al2O3(4)   Mg(5)     O2(6)     Al(7)    H2(8)
-    So = numpy.array([26.950,   69.950,     63.137,       71.128,     50.626,   32.535,  205.149,  28.275,   130.679])
+    def Cpint(self, Ta, Tb):
+        integral, _ = scipy.integrate.quad(self.Cp, Ta, Tb)
+        return integral
     
-    DSofMgO   = So[0] - So[5] - 0.5*So[6]
-    DSofH2O   = So[1] - So[8] - 0.5*So[6]
-    DSofAl2O3 = So[4] - 2*So[7] - (3/2)*So[6]
-    DSofMgOH2 = So[2] - So[5] - Ho[6] - So[8]
-    DSofAlOH3 = So[3] - So[7] - (3/2)*So[6] - (3/2)*So[8]
+    def CpintT(self, Ta, Tb):
+        integral, _ = scipy.integrate.quad(lambda T: self.Cp(T)/T, Ta, Tb)
+        return integral
+
+    def __repr__(self):
+        return ("compound('%s'" + ", %f"*7) % (self.name, self.DGf, self.A, self.B, self.C, self.D, self.Ho, self.So) + ")"
     
-        # final Compound calculations as a function of Temperature
-    for s in range(0, nspecies):  
-        space = position - 1
-        if position == 0:
-            space = 0  
-            # Heat Capacity as a function of temperature:
-        Cpvalue[position,s] = Aconstant[s] + Bconstant[s]*(math.pow(10, -3))*T + Cconstant[s]*(math.pow(10, 5))*(math.pow(T, -2)) + Dconstant[s]*(math.pow(10, -6))*(math.pow(T, 2))
-                # Straight Cp inegration for Enthalpy
-        Cpintvalue[position, s] = Cpintvalue[space, s] + dT*Cpvalue[position, s]
-        Cpintvalue[0,s] = Cpvalue[0,s]
-                # Integradtion for Entropy
-        CpintTvalue[position,s] = CpintTvalue[space,s] + dT*(Cpvalue[position, s])/T
-        CpintTvalue[0,s] = Cpvalue[0,s]
-        # Enthalpy of Formation as a function of temperature:
-    for h in range(0, nspecies):
-        if h==0:
-            Hvalue[position,h] = DHofMgO + Cpintvalue[position,h] - Cpintvalue[position,5] - 0.5*Cpintvalue[position,6]
-        if h==1:
-            Hvalue[position,h] = DHofH2O + Cpintvalue[position,h] - Cpintvalue[position,8] - 0.5*Cpintvalue[position,6]
-        if h==2:
-            Hvalue[position,h] = DHofMgOH2 + Cpintvalue[position,h] - Cpintvalue[position,5] - Cpintvalue[position,6] - Cpintvalue[position,8]
-        if h==3:
-            Hvalue[position,h] = DHofAlOH3 + Cpintvalue[position,h] - Cpintvalue[position,7] - (3/2)*Cpintvalue[position,6] - (3/2)*Cpintvalue[position,8]
-        if h==4:
-            Hvalue[position,h] = DHofAl2O3 + Cpintvalue[position,h] - 2*Cpintvalue[position,7] - (3/2)*Cpintvalue[position,6]       
-        # Entropy of Formation as a function of Temperature
-    for s in range(0, nspecies):
-        if s==0:
-            Svalue[position,s] = DSofMgO + CpintTvalue[position,s] - CpintTvalue[position,5] - 0.5*CpintTvalue[position,6]
-        if s==1:
-            Svalue[position,s] = DSofH2O + CpintTvalue[position,s] - CpintTvalue[position,8] - 0.5*CpintTvalue[position,6]
-        if s==2:
-            Svalue[position,s] = DSofMgOH2 + CpintTvalue[position,s] - CpintTvalue[position,5] - CpintTvalue[position,6] - CpintTvalue[position,8]
-        if s==3:
-            Svalue[position,s] = DSofAlOH3 + CpintTvalue[position,s] - CpintTvalue[position,7] - (3/2)*CpintTvalue[position,6] - (3/2)*CpintTvalue[position,8]
-        if s==4:
-            Svalue[position,s] = DSofAl2O3 + CpintTvalue[position,s] - 2*CpintTvalue[position,7] - (3/2)*CpintTvalue[position,6]
-#    print Svalue[:,0] 
-        # Gibbs Free energy of Formation as a function of temperature
-    for g in range(0, nspecies):
-        if g==0:
-            DHvalue = Hvalue[position,g] - Hvalue[position,5] - 0.5*Hvalue[position,6]
-            DSvalue = Svalue[position,g] - Svalue[position,5] - 0.5*Svalue[position,6]
-            Gvalue[position,g] = DHvalue - T*DSvalue
-        if g==1:
-            DHvalue = Hvalue[position,g] - Hvalue[position,8] - 0.5*Hvalue[position,6]
-            DSvalue = Svalue[position,g] - Svalue[position,8] - 0.5*Svalue[position,6]
-            Gvalue[position,g] = DHvalue - T*DSvalue
-        if g==2:
-            DHvalue = Hvalue[position,g] - Hvalue[position,5] - Hvalue[position,6] - Hvalue[position,8]
-            DSvalue = Svalue[position,g] - Svalue[position,5] - Svalue[position,6] - Svalue[position,8]
-            Gvalue[position,g] = DHvalue - T*DSvalue
-        if g==3:
-            DHvalue = Hvalue[position,g] - Hvalue[position,7] - (3/2)*Hvalue[position,6] - (3/2)*Hvalue[position,8]
-            DSvalue = Svalue[position,g] - Svalue[position,7] - (3/2)*Svalue[position,6] - (3/2)*Svalue[position,8]
-            Gvalue[position,g] = DHvalue - T*DSvalue
+def parse(row):
+    return [row[0]] + map(float, row[1:])    
+
+class database:
+    def __init__(self, filename):
+        import csv
+        infile = csv.reader(open(filename))
+        infile.next()
+        self.compounds = [compound(*parse(row)) for row in infile]
+        self.names = [c.name for c in self.compounds]
+    
+    def __getitem__(self, name):
+        return self.compounds[self.names.index(name)]
+    
+class mixture:
+    """ Container for mixture properties """
+    def __init__(self, charge):
+        """ Initialise mixture - charge contains tuples of (initialcharge, compound) """
+        self.N, self.compounds = zip(*charge)
+        self.N = numpy.array(self.N)
+        self.compoundnames = [c.name for c in self.compounds]
+        self.DGf = numpy.array([c.DGf for c in self.compounds])
+        self.elements = reduce(set.union, (c.parsed.distinctelements() 
+                                            for c in self.compounds))
+        self.S = numpy.array([c.parsed.counts(self.elements) 
+                                for c in self.compounds]).T
+        Srank = numpy.count_nonzero(numpy.linalg.svd(self.S, compute_uv=False) > smallvalue)
             
-        if g==4:
-            DHvalue = Hvalue[position,g] - 2*Hvalue[position,7] - (3/2)*Hvalue[position,6]
-            DSvalue = Svalue[position,g] - 2*Svalue[position,7] - (3/2)*Svalue[position,6]
-            Gvalue[position,g] = DHvalue - T*DSvalue
+        # Calculating the Degrees of freedom
+        self.DOF = self.S.shape[1] - Srank                      
+            
+        # Coefficients of the Gibbs function
+        Ncomps = len(self.compounds)
+        # self.A = numpy.tile(numpy.repeat([-1, 1], [1, Ncomps-1]), [Ncomps, 1])
+        # number of atoms of each element
+        self.atoms = numpy.dot(self.S, self.N)
+        
+    def gibbs(self, N=None):
+        """ Gibbs energy of mixture with N of each compound """
+        if N is None: N = self.N
+        # TODO: There is every chance that this function is not correct. It needs to be checked.
+        #return sum(N*(self.DGf/(R*T) + numpy.log(numpy.dot(self.A, N))))
+        logs = numpy.log(sum(N)) 
+        RT = R*T      
+        return sum(N*(self.DGf/RT + numpy.log(N) - logs))
     
-
-
-    m = mixture([[4.0,  compound('MgO',                                 -568343.0)],
-                [1.0, compound('Al2O3',                                -1152420.0)],
-                [8.0,  compound('H2O',                                  -237141.0)],
-                [0,   compound('Mg(OH)2',                               -833644.0)],
-                [0,   compound('Al(OH)3',                              -1835750.0)]])
+    def atombalance(self, N):
+    
+        """ Atom balance with N of each compound """
+        #if N is None: N = self.N
+        return numpy.dot(self.S, N) - self.atoms
+    
         
+    def conversion(self, conversionspec):
+        """ Calculate the composition given a certain conversion.
+        conversionspec is a list of 2-tuples containing a component index or name and a conversion """
+        #TODO: A and B should only be calculated once
+        #TODO: This does not take into account any existing products in the mixture
+        #TODO: This works only for conversion specified in terms of reagents
+        if len(conversionspec) < self.DOF:
+            raise Exception("Not enough conversions specified.")
+        C = numpy.zeros([len(conversionspec), self.S.shape[1]])
+        Ic = C.copy()
+        for i, (j, c) in enumerate(conversionspec):
+            if type(j) is str:
+                j = self.compoundnames.index(j)
+            C[i, j] = 1-c
+            Ic[i, j] = 1
+        A = numpy.vstack([self.S, C])
+        B = numpy.vstack([self.S, Ic])
+        # A ni = B nf
+        nf, _, _, _ = scipy.linalg.lstsq(B, numpy.dot(A, self.N))
+        # assert residuals are neglegable
+        nf[nf<0] = 0
+        return nf
         
-        # find Gibbs energy surface for many conversion possibilities
+    def equilibrium(self, initialconversion):
+        """ Return equilibrium composition as minimum of Gibbs Energy """
+        # guess initial conditions
+        N0 = self.conversion(initialconversion)
+        logN0 = numpy.log(N0)
+            
+        # This decorator modifies a function to be defined in terms of new variables
+        def changevars(f):
+            def newf(newX):
+                r = f(numpy.exp(newX))
+                return r
+            return newf
+    
+        # Find optimal point in terms of a change of variables
+        logN = scipy.optimize.fmin_slsqp(changevars(self.gibbs), 
+                                        logN0, 
+                                        f_eqcons=changevars(self.atombalance),
+                                        acc = 1.0E-12)
+
+        N = numpy.exp(logN)
+        print ''
+        print 'Calculated Optimmum Values'
+        print N
+        print ''
+        print 'Calculated Optimum Function value'
+        print self.gibbs(N)
+            
+        return N
+
+# Read properties from file
+d = database('compounds.csv')
+
+#TODO: Should be able to build this from the compound list
+#     0   1   2   3    4     5    6    7   8 
+M = numpy.array([[1,  0,  0,  0,   0,   -1, -1/2,  0,  0],
+                 [0,  1,  0,  0,   0,    0, -1/2,  0, -1],
+                 [0,  0,  1,  0,   0,   -1,   -1,  0, -1],
+                 [0,  0,  0,  1,   0,    0, -3/2, -1, -3/2],
+                 [0,  0,  0,  0,   1,    0, -3/2, -2,  0],
+                 [0,  0,  0,  0,   0,    1,    0,  0,  0],
+                 [0,  0,  0,  0,   0,    0,    1,  0,  0],
+                 [0,  0,  0,  0,   0,    0,    0,  1,  0],
+                 [0,  0,  0,  0,   0,    0,    0,  0,  1]])
+
+Ho = numpy.array([c.Ho for c in d.compounds])
+So = numpy.array([c.So for c in d.compounds])
+DHof = M.dot(Ho)
+DSof = M.dot(So)
+
+m = mixture([[4.0, d['MgO']], 
+             [1.0, d['Al2O3']], 
+             [8.0, d['H2O']],    
+             [0.0, d['Mg(OH)2']],
+             [0.0, d['Al(OH)3']]])
+
+for i, T in enumerate(Temprange):
+    for j, c in enumerate(d.compounds):
+        # Heat Capacity as a function of temperature:
+        Cpv[i, j] = c.Cpint(Tstart, T)
+        Cpintvalue[i, j] = c.Cpint(Tstart, T)
+        CpintTvalue[i, j] = c.CpintT(Tstart, T)
+    # final Compound calculations as a function of Temperature
+            
+        
+    # Enthalpy of Formation as a function of temperature:
+    Hvalue[i, :] = DHof + M.dot(Cpintvalue[i, :])
+    Svalue[i, :] = DSof + M.dot(CpintTvalue[i, :])
+
+    DHvalue[i, :] = M.dot(Hvalue[i, :])
+    DSvalue[i, :] = M.dot(Svalue[i, :])
+
+    # Gibbs Free energy of Formation as a function of temperature
+    Gvalue[i, :] = DHvalue[i, :] - T*DSvalue[i, :]
+        
+    # find Gibbs energy surface for many conversion possibilities
     Nsteps = 10
     convrange = numpy.linspace(0.001, 0.999, Nsteps)
     gibbssurface = numpy.zeros((Nsteps, Nsteps))
@@ -301,5 +266,3 @@ if mustplot:
     ax.set_ylabel('Conversion of Al2O3')
     ax.set_zlabel('Gibbs free energy (G/RT)')
     pl.show()
-
-
