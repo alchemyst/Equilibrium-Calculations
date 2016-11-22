@@ -5,11 +5,11 @@
 import re
 import collections
 
-tokenre = ['[A-Z][a-z]*',
-           '\(',
-           '\)',
-           '[0-9]+',
-           '\.']
+tokenre = [r'[A-Z][a-z]*',
+           r'(',
+           r')',
+           r'[0-9]+',
+           r'.']
 
 class Group:
     def __init__(self, item=None, multiplier=1):
@@ -36,7 +36,7 @@ class Group:
         return set(self.elements())
 
     def count(self, element):
-        return sum(1 for myelement in self.elements if myelement == element)
+        return sum(1 for myelement in self.elements() if myelement == element)
 
     def counts(self, elements=None):
         c = collections.Counter(self.elements())
@@ -118,5 +118,5 @@ if __name__=='__main__':
                  '2Mg(OH)2.2H2O',
                  'Pb10Ag12']
 
-    for t in testcases:
-        test(t)
+    for testcase in testcases:
+        test(testcase)
