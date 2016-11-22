@@ -5,22 +5,13 @@
 import re
 import collections
 
-tokenre = ['[A-Z][a-z]*',
-           '\(',
-           '\)',
-           '[0-9]+',
-           '\.']
+tokenre = [r'[A-Z][a-z]*',
+           r'(',
+           r')',
+           r'[0-9]+',
+           r'.']
 
-def counter():
-    return collections.defaultdict(lambda: 0)
-
-def countitems(l):
-    d = counter()
-    for i in l:
-        d[i] += 1
-    return d
-
-class group:
+class Group:
     def __init__(self, item=None, multiplier=1):
         self.multiplier = multiplier
         self.contents = []
@@ -45,10 +36,10 @@ class group:
         return set(self.elements())
 
     def count(self, element):
-        return sum(1 for myelement in self.elements if myelement == element)
+        return sum(1 for myelement in self.elements() if myelement == element)
 
     def counts(self, elements=None):
-        c = countitems(self.elements())
+        c = collections.Counter(self.elements())
         if elements is None:
             return c
         else:
@@ -72,39 +63,39 @@ class group:
         return s
 
     def __repr__(self):
-        return 'group(' + str(self.contents) + ', ' 'multiplier=' + str(self.multiplier) + ')'
+        return 'Group(' + str(self.contents) + ', ' 'multiplier=' + str(self.multiplier) + ')'
 
 
 def parse(tokens, level=0):
-    currentgroup = group()
-    if len(tokens) == 0:
-        return currentgroup, []
-    else:
-        firsttoken = True
-        while tokens:
-            t, tokens = [tokens[0], tokens[1:]]
-            if t == '(':
-                newgroup, tokens = parse(tokens, level+1)
-                currentgroup.add(newgroup)
-            elif t == ')':
-                if level == 0:
-                    raise Exception('Parse error: Unmatched closing bracket')
-                else:
-                    return currentgroup, tokens
-            elif t == '.':
-                newgroup, tokens = parse(tokens, level)
-                currentgroup.add(newgroup)
-            elif t.isdigit():
-                if firsttoken:
-                    currentgroup.multiplier = int(t)
-                else:
-                    currentgroup.lastitem.multiplier *= int(t)
+    currentgroup = Group()
+
+    firsttoken = True
+    while tokens:
+        t, *tokens = tokens
+        if t == '(':
+            newgroup, tokens = parse(tokens, level+1)
+            currentgroup.add(newgroup)
+        elif t == ')':
+            if level == 0:
+                raise Exception('Parse error: Unmatched closing bracket')
             else:
-                currentgroup.add(group(t))
-            firsttoken = False
-        if level > 0:
-            raise Exception('Parse error: Unmatched opening bracket')
-        return currentgroup, tokens
+                return currentgroup, tokens
+        elif t == '.':
+            newgroup, tokens = parse(tokens, level)
+            currentgroup.add(newgroup)
+        elif t.isdigit():
+            if firsttoken:
+                currentgroup.multiplier = int(t)
+            else:
+                currentgroup.lastitem.multiplier *= int(t)
+        else:
+            currentgroup.add(Group(t))
+        firsttoken = False
+
+    if level > 0:
+        raise Exception('Parse error: Unmatched opening bracket')
+
+    return currentgroup, tokens
 
 def parseformula(formula):
     splitter = re.compile('(' + '|'.join(tokenre) + ')')
@@ -114,17 +105,18 @@ def parseformula(formula):
 
 def test(formula):
     g = parseformula(formula)
-    print formula
-    print '='*len(formula)
-    print 'Parsed result:', g
-    print 'Canonical:', g.canonicalstr()
-    print 'Counts:', g.counts()
-    print
+    print(formula)
+    print('='*len(formula))
+    print('Parsed result:', g)
+    print('Canonical:', g.canonicalstr())
+    print('Counts:', g.counts())
+    print()
 
 if __name__=='__main__':
     testcases = ['MgOH(C(ClH3)2)3CH3',
                  'Mg(OH)3.2H2O',
-                 '2Mg(OH)2.2H2O']
+                 '2Mg(OH)2.2H2O',
+                 'Pb10Ag12']
 
-    for t in testcases:
-        test(t)
+    for testcase in testcases:
+        test(testcase)
