@@ -11,7 +11,7 @@ tokenre = ['[A-Z][a-z]*',
            '[0-9]+',
            '\.']
 
-class group:
+class Group:
     def __init__(self, item=None, multiplier=1):
         self.multiplier = multiplier
         self.contents = []
@@ -63,11 +63,11 @@ class group:
         return s
 
     def __repr__(self):
-        return 'group(' + str(self.contents) + ', ' 'multiplier=' + str(self.multiplier) + ')'
+        return 'Group(' + str(self.contents) + ', ' 'multiplier=' + str(self.multiplier) + ')'
 
 
 def parse(tokens, level=0):
-    currentgroup = group()
+    currentgroup = Group()
 
     firsttoken = True
     while tokens:
@@ -89,7 +89,7 @@ def parse(tokens, level=0):
             else:
                 currentgroup.lastitem.multiplier *= int(t)
         else:
-            currentgroup.add(group(t))
+            currentgroup.add(Group(t))
         firsttoken = False
 
     if level > 0:
