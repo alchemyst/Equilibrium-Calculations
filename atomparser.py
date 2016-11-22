@@ -11,15 +11,6 @@ tokenre = ['[A-Z][a-z]*',
            '[0-9]+',
            '\.']
 
-def counter():
-    return collections.defaultdict(lambda: 0)
-
-def countitems(l):
-    d = counter()
-    for i in l:
-        d[i] += 1
-    return d
-
 class group:
     def __init__(self, item=None, multiplier=1):
         self.multiplier = multiplier
@@ -48,7 +39,7 @@ class group:
         return sum(1 for myelement in self.elements if myelement == element)
 
     def counts(self, elements=None):
-        c = countitems(self.elements())
+        c = collections.Counter(self.elements())
         if elements is None:
             return c
         else:

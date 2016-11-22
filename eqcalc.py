@@ -5,7 +5,7 @@
 # 201110 Originally by Hendrik Venter
 # 201111 Significantly reworked by Carl Sandrock
 
-from __future__ import division
+
 import scipy.optimize
 import scipy.linalg
 import scipy.integrate
@@ -15,6 +15,7 @@ import atomparser
 from mpl_toolkits.mplot3d import axes3d
 from matplotlib import cm
 from matplotlib import pyplot as pl
+from functools import reduce
 
 smallvalue = 1e-10
 
@@ -71,13 +72,13 @@ class compound:
         return ("compound('%s'" + ", %f"*7) % (self.name, self.DGf, self.A, self.B, self.C, self.D, self.Ho, self.So) + ")"
     
 def parse(row):
-    return [row[0]] + map(float, row[1:])    
+    return [row[0]] + list(map(float, row[1:]))    
 
 class database:
     def __init__(self, filename):
         import csv
         infile = csv.reader(open(filename))
-        infile.next()
+        next(infile)
         self.compounds = [compound(*parse(row)) for row in infile]
         self.names = [c.name for c in self.compounds]
     
@@ -88,7 +89,7 @@ class mixture:
     """ Container for mixture properties """
     def __init__(self, charge):
         """ Initialise mixture - charge contains tuples of (initialcharge, compound) """
-        self.N, self.compounds = zip(*charge)
+        self.N, self.compounds = list(zip(*charge))
         self.N = numpy.array(self.N)
         self.compoundnames = [c.name for c in self.compounds]
         self.DGf = numpy.array([c.DGf for c in self.compounds])
@@ -166,12 +167,12 @@ class mixture:
                                         acc = 1.0E-12)
 
         N = numpy.exp(logN)
-        print ''
-        print 'Calculated Optimmum Values'
-        print N
-        print ''
-        print 'Calculated Optimum Function value'
-        print self.gibbs(N)
+        print('')
+        print('Calculated Optimmum Values')
+        print(N)
+        print('')
+        print('Calculated Optimum Function value')
+        print(self.gibbs(N))
             
         return N
 
@@ -242,17 +243,17 @@ for i, T in enumerate(Temprange):
     position = position + 1
 
 
-print 
+print() 
 
 # For displaying data in Console Window    
-print ''
-print '*************Final Values***************'
-print 'The optimum temperature is', Temperature
-print 'The Minimum Function vaue is ', Minvalue
-print 'The optimum final values are', Finalmole
-print ''
+print('')
+print('*************Final Values***************')
+print('The optimum temperature is', Temperature)
+print('The Minimum Function vaue is ', Minvalue)
+print('The optimum final values are', Finalmole)
+print('')
 for n, init, name in zip(N, m.N, m.compoundnames):
-    print name, 'initial =', init, 'final =', n
+    print(name, 'initial =', init, 'final =', n)
 
 # Plot results
 if mustplot:
