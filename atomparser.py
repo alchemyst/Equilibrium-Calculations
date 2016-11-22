@@ -71,7 +71,7 @@ def parse(tokens, level=0):
 
     firsttoken = True
     while tokens:
-        t, tokens = [tokens[0], tokens[1:]]
+        t, *tokens = tokens
         if t == '(':
             newgroup, tokens = parse(tokens, level+1)
             currentgroup.add(newgroup)
