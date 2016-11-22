@@ -77,34 +77,34 @@ class group:
 
 def parse(tokens, level=0):
     currentgroup = group()
-    if len(tokens) == 0:
-        return currentgroup, []
-    else:
-        firsttoken = True
-        while tokens:
-            t, tokens = [tokens[0], tokens[1:]]
-            if t == '(':
-                newgroup, tokens = parse(tokens, level+1)
-                currentgroup.add(newgroup)
-            elif t == ')':
-                if level == 0:
-                    raise Exception('Parse error: Unmatched closing bracket')
-                else:
-                    return currentgroup, tokens
-            elif t == '.':
-                newgroup, tokens = parse(tokens, level)
-                currentgroup.add(newgroup)
-            elif t.isdigit():
-                if firsttoken:
-                    currentgroup.multiplier = int(t)
-                else:
-                    currentgroup.lastitem.multiplier *= int(t)
+
+    firsttoken = True
+    while tokens:
+        t, tokens = [tokens[0], tokens[1:]]
+        if t == '(':
+            newgroup, tokens = parse(tokens, level+1)
+            currentgroup.add(newgroup)
+        elif t == ')':
+            if level == 0:
+                raise Exception('Parse error: Unmatched closing bracket')
             else:
-                currentgroup.add(group(t))
-            firsttoken = False
-        if level > 0:
-            raise Exception('Parse error: Unmatched opening bracket')
-        return currentgroup, tokens
+                return currentgroup, tokens
+        elif t == '.':
+            newgroup, tokens = parse(tokens, level)
+            currentgroup.add(newgroup)
+        elif t.isdigit():
+            if firsttoken:
+                currentgroup.multiplier = int(t)
+            else:
+                currentgroup.lastitem.multiplier *= int(t)
+        else:
+            currentgroup.add(group(t))
+        firsttoken = False
+
+    if level > 0:
+        raise Exception('Parse error: Unmatched opening bracket')
+
+    return currentgroup, tokens
 
 def parseformula(formula):
     splitter = re.compile('(' + '|'.join(tokenre) + ')')
@@ -114,17 +114,18 @@ def parseformula(formula):
 
 def test(formula):
     g = parseformula(formula)
-    print formula
-    print '='*len(formula)
-    print 'Parsed result:', g
-    print 'Canonical:', g.canonicalstr()
-    print 'Counts:', g.counts()
-    print
+    print(formula)
+    print('='*len(formula))
+    print('Parsed result:', g)
+    print('Canonical:', g.canonicalstr())
+    print('Counts:', g.counts())
+    print()
 
 if __name__=='__main__':
     testcases = ['MgOH(C(ClH3)2)3CH3',
                  'Mg(OH)3.2H2O',
-                 '2Mg(OH)2.2H2O']
+                 '2Mg(OH)2.2H2O',
+                 'Pb10Ag12']
 
     for t in testcases:
         test(t)
